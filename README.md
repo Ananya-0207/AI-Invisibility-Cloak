@@ -4,6 +4,18 @@ A real-time **AI-powered invisibility cloak** system built using **DeepLabV3 sem
 The project detects a cloth worn by a person and dynamically replaces it with the background captured from the webcam, creating a camouflage effect.
 
 ---
+## 📌 Main Implementation File
+
+👉 **`invisibility.py`**
+
+This file contains the complete implementation of:
+- Real-time webcam capture
+- DeepLabV3 person segmentation
+- Cloth detection & masking
+- Background replacement (invisibility effect)
+- Face protection
+- Video recording and visualization
+
 
 ## 🚀 Features
 
