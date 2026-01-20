@@ -15,6 +15,7 @@ This file contains the complete implementation of:
 - Background replacement (invisibility effect)
 - Face protection
 - Video recording and visualization
+🔗 [View main implementation → invisibility_cloak.py](./invisibility_cloak.py)
 
 
 ## 🚀 Features
