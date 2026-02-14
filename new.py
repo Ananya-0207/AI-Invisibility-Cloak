@@ -1,160 +1,157 @@
-# import cv2
-# import numpy as np
-# import mediapipe as mp
-# import time
+# =====================================================
+# AI Invisibility Cloak using DeepLabV3 + OpenCV
+# =====================================================
 
-# cap = cv2.VideoCapture(0)
-# time.sleep(2)
-
-# print("Capturing background...")
-# for i in range(60):
-#     ret, bg = cap.read()
-
-# bg = np.flip(bg, axis=1)
-
-# mp_selfie = mp.solutions.selfie_segmentation
-# segment = mp_selfie.SelfieSegmentation(model_selection=1)
-
-# while True:
-#     ret, frame = cap.read()
-#     if not ret:
-#         break
-
-#     frame = np.flip(frame, axis=1)
-
-#     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-#     results = segment.process(rgb)
-
-#     mask = (results.segmentation_mask > 0.6).astype(np.uint8)
-
-#     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-#     lower_blue = np.array([90, 50, 50])
-#     upper_blue = np.array([130, 255, 255])
-
-#     cloth_mask = cv2.inRange(hsv, lower_blue, upper_blue)
-#     cloth_mask = cv2.bitwise_and(cloth_mask, cloth_mask, mask=mask)
-
-#     kernel = np.ones((7,7), np.uint8)
-#     cloth_mask = cv2.morphologyEx(cloth_mask, cv2.MORPH_CLOSE, kernel)
-#     cloth_mask = cv2.GaussianBlur(cloth_mask, (15,15), 0)
-
-#     inverse = cv2.bitwise_not(cloth_mask)
-
-#     res1 = cv2.bitwise_and(bg, bg, mask=cloth_mask)
-#     res2 = cv2.bitwise_and(frame, frame, mask=inverse)
-
-#     final = cv2.add(res1, res2)
-
-#     # WINDOW 1 → Raw Camera
-#     cv2.imshow("Live Camera", frame)
-
-#     # WINDOW 2 → Camouflage Output
-#     cv2.imshow("Invisibility Cloak", final)
-
-#     if cv2.waitKey(1) & 0xFF == 27:
-#         break
-
-# cap.release()
-# cv2.destroyAllWindows()
-# SSL FIX
+# ----------- SSL Handling -----------
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
+# ----------- Imports -----------
 import cv2
 import torch
 import numpy as np
-import torchvision.transforms as T
+import torchvision.transforms as transforms
 import time
 
-print("[INFO] Loading DeepLab model...")
-model = torch.hub.load(
-    'pytorch/vision:v0.10.0',
-    'deeplabv3_mobilenet_v3_large',
+# ----------- Load Pretrained Segmentation Model -----------
+print("[SYSTEM] Initializing DeepLabV3 model...")
+
+segmentation_model = torch.hub.load(
+    "pytorch/vision:v0.10.0",
+    "deeplabv3_mobilenet_v3_large",
     pretrained=True
 )
-model.eval()
+
+segmentation_model.eval()
+segmentation_model.to("cpu")
 torch.set_num_threads(4)
-print("[INFO] Model loaded.")
 
-cap = cv2.VideoCapture(0)
-cap.set(3, 640)
-cap.set(4, 480)
+print("[SYSTEM] Model ready.")
 
-# Video writer
-fourcc = cv2.VideoWriter_fourcc(*'XVID')
-out = cv2.VideoWriter('cloak_output.avi', fourcc, 20.0, (640,480))
+# ----------- Webcam Setup -----------
+camera = cv2.VideoCapture(0)
+camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-# Capture background
-print("[INFO] Capturing background. Please move away...")
+# ----------- Video Output Setup -----------
+codec = cv2.VideoWriter_fourcc(*"XVID")
+video_output = cv2.VideoWriter(
+    "invisibility_output.avi",
+    codec,
+    20.0,
+    (640, 480)
+)
+
+print("[SYSTEM] Recording started.")
+
+# ----------- Background Initialization -----------
+print("[SYSTEM] Capturing clean background...")
 time.sleep(2)
 
-bg_frames = []
-for _ in range(60):
-    ret, frame = cap.read()
-    if ret:
-        bg_frames.append(frame)
+background_collection = []
 
-background = np.median(bg_frames, axis=0).astype(np.uint8)
-background = cv2.flip(background, 1)
-print("[INFO] Background captured.")
+for _ in range(120):
+    success, frame = camera.read()
+    if success:
+        background_collection.append(frame)
 
-transform = T.Compose([
-    T.ToPILImage(),
-    T.Resize(520),
-    T.ToTensor(),
-    T.Normalize(
+static_background = np.median(background_collection, axis=0).astype(np.uint8)
+static_background = cv2.flip(static_background, 1)
+
+print("[SYSTEM] Background stored.")
+
+# ----------- Image Preprocessing Transform -----------
+preprocess = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.Resize(520),
+    transforms.ToTensor(),
+    transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225]
     )
 ])
 
-# Blue cloth range
-lower_blue = np.array([90, 50, 50])
-upper_blue = np.array([130, 255, 255])
-kernel = np.ones((5,5), np.uint8)
+# ----------- Cloak Color Range (Blue Default) -----------
+blue_lower = np.array([90, 50, 50])
+blue_upper = np.array([130, 255, 255])
 
-print("[INFO] Starting camouflage...")
+morph_kernel = np.ones((7, 7), np.uint8)
+
+print("[SYSTEM] Cloak activated. Press ESC to stop.")
+
+# =====================================================
+# Main Processing Loop
+# =====================================================
+
 while True:
-    ret, frame = cap.read()
-    if not ret:
+    grabbed, current_frame = camera.read()
+    if not grabbed:
         break
 
-    frame = cv2.flip(frame, 1)
+    current_frame = cv2.bilateralFilter(current_frame, 9, 75, 75)
 
-    # DeepLab person segmentation
-    img = transform(frame).unsqueeze(0)
+    # ----------- DeepLab Person Segmentation -----------
+    input_tensor = preprocess(current_frame).unsqueeze(0)
+
     with torch.no_grad():
-        output = model(img)['out'][0]
+        prediction = segmentation_model(input_tensor)["out"][0]
 
-    mask = output.argmax(0).cpu().numpy()
-    person_mask = np.where(mask == 15, 255, 0).astype(np.uint8)
-    person_mask = cv2.resize(person_mask, (frame.shape[1], frame.shape[0]))
+    class_map = prediction.argmax(0).cpu().numpy()
 
-    # Cloth detection
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    cloth_mask = cv2.inRange(hsv, lower_blue, upper_blue)
+    # COCO Person Class ID = 15
+    person_region = np.where(class_map == 15, 255, 0).astype(np.uint8)
+    person_region = cv2.resize(person_region, (640, 480))
 
-    cloth_mask = cv2.bitwise_and(cloth_mask, cloth_mask, mask=person_mask)
-    cloth_mask = cv2.morphologyEx(cloth_mask, cv2.MORPH_OPEN, kernel, iterations=2)
-    cloth_mask = cv2.GaussianBlur(cloth_mask, (15,15), 0)
+    # ----------- Basic Face Preservation Logic -----------
+    rows, cols = np.where(person_region == 255)
+    face_protection = np.zeros_like(person_region)
 
-    inv_mask = cv2.bitwise_not(cloth_mask)
+    if len(rows) > 0:
+        top = np.min(rows)
+        bottom = np.max(rows)
+        head_area = int((bottom - top) * 0.30)
+        face_protection[top:top + head_area, :] = 255
 
-    bg_part = cv2.bitwise_and(background, background, mask=cloth_mask)
-    fg_part = cv2.bitwise_and(frame, frame, mask=inv_mask)
+    # ----------- Cloth Detection (HSV Based) -----------
+    hsv_frame = cv2.cvtColor(current_frame, cv2.COLOR_BGR2HSV)
+    cloak_region = cv2.inRange(hsv_frame, blue_lower, blue_upper)
 
-    final = cv2.add(bg_part, fg_part)
+    cloak_region = cv2.bitwise_and(cloak_region, cloak_region, mask=person_region)
+    cloak_region = cv2.bitwise_and(cloak_region, cv2.bitwise_not(face_protection))
 
-    out.write(final)
+    # ----------- Mask Refinement -----------
+    cloak_region = cv2.morphologyEx(cloak_region, cv2.MORPH_CLOSE, morph_kernel)
+    cloak_region = cv2.GaussianBlur(cloak_region, (21, 21), 0)
 
-    cv2.imshow("Camera", frame)
-    cv2.imshow("Cloth Mask", cloth_mask)
-    cv2.imshow("Invisibility Cloak", final)
+    edge_map = cv2.Canny(cloak_region, 50, 150)
+    edge_map = cv2.GaussianBlur(edge_map, (21, 21), 0)
+
+    refined_mask = cv2.subtract(cloak_region, edge_map)
+
+    # ----------- Cloak Effect Composition -----------
+    inverse_mask = cv2.bitwise_not(refined_mask)
+
+    background_part = cv2.bitwise_and(static_background, static_background, mask=refined_mask)
+    visible_part = cv2.bitwise_and(current_frame, current_frame, mask=inverse_mask)
+
+    output_frame = cv2.add(background_part, visible_part)
+
+    # ----------- Save and Display -----------
+    video_output.write(output_frame)
+
+    cv2.imshow("Original Frame", current_frame)
+    cv2.imshow("Person Segmentation", person_region)
+    cv2.imshow("Face Protected", face_protection)
+    cv2.imshow("Cloak Mask", refined_mask)
+    cv2.imshow("Final Output", output_frame)
 
     if cv2.waitKey(1) == 27:
+        print("[SYSTEM] Shutting down...")
         break
 
-cap.release()
-out.release()
+# ----------- Cleanup -----------
+camera.release()
+video_output.release()
 cv2.destroyAllWindows()
-print("[INFO] Done.")
+
+print("[SYSTEM] Process completed.")
